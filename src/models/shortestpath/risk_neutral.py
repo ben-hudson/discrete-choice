@@ -9,7 +9,6 @@ from typing import Tuple
 from utils.misc import hush
 
 
-# bellman ford SP problem (we use bellman ford to allow for negative edge costs)
 class ShortestPath:
     def __init__(self, graph: nx.DiGraph, source, sink) -> None:
         super().__init__()
@@ -31,7 +30,7 @@ class ShortestPath:
             self._graph.edges[e]["cost"] = val
 
     def solve(self) -> Tuple[torch.FloatTensor, float]:
-        obj, path = nx.single_source_bellman_ford(self._graph, self._source, self._sink, "cost")
+        obj, path = nx.single_source_dijkstra(self._graph, self._source, self._sink, "cost")
         path_edges = list(zip(path[:-1], path[1:]))
         sol = [1 if e in path_edges else 0 for e in self._graph.edges]
         return torch.FloatTensor(sol), obj
