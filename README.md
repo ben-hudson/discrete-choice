@@ -1,1 +1,1 @@
-# discrete-choice
+# Discrete choice modeling with VAEs
