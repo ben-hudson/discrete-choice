@@ -1,30 +1,24 @@
+import numpy as np
 import torch
 
 from typing import Tuple, Callable
 
 
 class DiscreteChoice:
-    def __init__(
-        self,
-        n_alternatives: int,
-        taste_dist: torch.distributions.Distribution,
-        util_func: Callable,
-    ):
+    def __init__(self, n_alternatives: int, util_fn: Callable, seed: int = None):
         self.n_alternatives = n_alternatives
-        self.taste_dist = taste_dist
-        self.get_util = util_func
+        self.get_util = util_fn
+        self.seed = seed
 
-    def get_choices(
-        self, obs_vars: torch.Tensor, unobs_vars: torch.Tensor, n_samples: int = 1
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        tastes = self.taste_dist.sample((n_samples,))
+    def sample(self, feats: np.ndarray, n_samples: int = 1):
+        util = self.get_util(feats, n_samples, self.seed).squeeze()
+        if isinstance(util, torch.Tensor):  # keep everything to np.array for consistency
+            util = util.numpy()
+        assert len(util.shape) == 2, f"expected util to be a 2D tensor after squeezing, but got {len(util.shape)}D"
+        assert (util.shape[0] == n_samples) and (
+            util.shape[1] == self.n_alternatives
+        ), f"expected util to be a {n_samples}x{self.n_alternatives} tensor, but got {util.shape[0]}x{util.shape[1]}"
 
-        util = self.get_util(obs_vars, unobs_vars, tastes).squeeze()
-        assert util.dim() == 2, f"expected util to be a 2D tensor after squeezing, but got {util.dim()}D"
-        assert (util.size(0) == n_samples) and (
-            util.size(1) == self.n_alternatives
-        ), f"expected util to be a {n_samples}x{self.n_alternatives} tensor, but got {util.size(0)}x{util.size(1)}"
-
-        choice_util, choices = torch.max(util, dim=-1)
-        # feats, costs, sols, objs
-        return obs_vars, util, choices, choice_util
+        choices = np.argmax(util, axis=1, keepdims=True)
+        choice_util = np.take_along_axis(util, choices, axis=1)
+        return util, choices.squeeze(), choice_util.squeeze()
