@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from typing import Tuple, Callable
+from typing import Callable
 
 
 class DiscreteChoice:
@@ -11,14 +11,15 @@ class DiscreteChoice:
         self.seed = seed
 
     def sample(self, feats: np.ndarray, n_samples: int = 1):
-        util = self.get_util(feats, n_samples, self.seed).squeeze()
+        util = self.get_util(feats, n_samples, self.seed)
         if isinstance(util, torch.Tensor):  # keep everything to np.array for consistency
             util = util.numpy()
-        assert len(util.shape) == 2, f"expected util to be a 2D tensor after squeezing, but got {len(util.shape)}D"
+        assert len(util.shape) == 2, f"expected util to be a 2D array, but got {len(util.shape)}D"
         assert (util.shape[0] == n_samples) and (
             util.shape[1] == self.n_alternatives
         ), f"expected util to be a {n_samples}x{self.n_alternatives} tensor, but got {util.shape[0]}x{util.shape[1]}"
 
         choices = np.argmax(util, axis=1, keepdims=True)
         choice_util = np.take_along_axis(util, choices, axis=1)
-        return util, choices.squeeze(), choice_util.squeeze()
+        other = {}
+        return util, choices.squeeze(), choice_util.squeeze(), other

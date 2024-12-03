@@ -31,7 +31,7 @@ def path_to_sol(path, edges):
 
 
 def test_ilp_sp(random_graph: nx.DiGraph):
-    def util(costs, n_samples):
+    def util(costs, n_samples, seed):
         return np.broadcast_to(-costs, (n_samples, *costs.shape))
 
     choice_model = PathChoice(random_graph, util_fn=util)
@@ -40,10 +40,8 @@ def test_ilp_sp(random_graph: nx.DiGraph):
     cost = np.array(list(cost_dict.values()))
 
     n_samples = 10
-    utils = choice_model.get_util(cost, n_samples)
-    ods = choice_model._sample_ods(n_samples)
-    constr_mat, constr_levels = choice_model._ods_to_constrs(ods)
-    sols, objs = choice_model._solve(utils, constr_mat, constr_levels)
+    util, sols, objs, other = choice_model.sample(cost, n_samples)
+    ods = other["ods"]
 
     for sol, obj, (o, d) in zip(sols, objs, ods):
         true_obj, true_path = nx.single_source_dijkstra(random_graph, o, d, weight="cost")
@@ -53,7 +51,7 @@ def test_ilp_sp(random_graph: nx.DiGraph):
 
 
 def test_multigraph_ilp_sp(multigraph: nx.MultiDiGraph):
-    def util(costs, n_samples):
+    def util(costs, n_samples, seed):
         return np.broadcast_to(-costs, (n_samples, *costs.shape))
 
     choice_model = PathChoice(multigraph, util_fn=util)
@@ -64,12 +62,9 @@ def test_multigraph_ilp_sp(multigraph: nx.MultiDiGraph):
     cost_dict = nx.get_edge_attributes(multigraph, "cost")
     cost = np.array(list(cost_dict.values()))
 
-    utils = choice_model.get_util(cost, 1)
-    ods = [(source, sink)]
-    constr_mat, constr_levels = choice_model._ods_to_constrs(ods)
-    sol, obj = choice_model._solve(utils, constr_mat, constr_levels)
-    sol = sol.squeeze()
-    obj = obj.squeeze()
+    util, sols, objs, other = choice_model.sample(cost, 1, source, sink)
+    sol = sols.squeeze()
+    obj = objs.squeeze()
 
     true_sol_dict = nx.get_edge_attributes(multigraph, "sp")
     true_sol = np.array(list(true_sol_dict.values()))
