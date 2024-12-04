@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from data_generator.shortestpath import PathChoice
+from datasets.shortestpath import PathChoice
 
 
 @pytest.fixture

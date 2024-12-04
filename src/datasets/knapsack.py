@@ -1,13 +1,11 @@
-import networkx as nx
 import numpy as np
 
 from scipy.optimize import linprog
-from typing import Any, Callable
 
 from .simple import DiscreteChoice
 
 
-class LinAddConstrBundleChoice(DiscreteChoice):
+class ConstrBundleChoice(DiscreteChoice):
     def sample(
         self,
         feats: np.ndarray,
@@ -16,9 +14,9 @@ class LinAddConstrBundleChoice(DiscreteChoice):
         n_samples: int = 1,
         eq_constr: bool = False,
     ):
-        util, _, _, _ = super().sample(feats, n_samples)
+        util, _, _, other = super().sample(feats, n_samples)
         choices, choice_util = self._solve(util, constr_mat, constr_levels, eq_constr)
-        return util, choices, choice_util, {}
+        return util, choices, choice_util, other
 
     def _solve(self, utils: np.ndarray, constr_mat: np.ndarray, constr_levels: np.ndarray, eq_constr: bool):
         assert utils.shape[0] == constr_levels.shape[0]

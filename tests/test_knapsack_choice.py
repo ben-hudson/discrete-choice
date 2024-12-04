@@ -1,6 +1,6 @@
 import numpy as np
 
-from data_generator.knapsack import LinAddConstrBundleChoice
+from datasets.knapsack import ConstrBundleChoice
 
 
 def test_knapsack_choice():
@@ -12,7 +12,7 @@ def test_knapsack_choice():
         np.random.shuffle(utils)
         return np.broadcast_to(utils, (n_samples, *utils.shape))
 
-    choice_model = LinAddConstrBundleChoice(n_alternatives, util)
+    choice_model = ConstrBundleChoice(n_alternatives, util)
 
     prices = np.arange(n_alternatives)
     budgets = np.arange(n_samples).reshape(-1, 1)
@@ -20,4 +20,4 @@ def test_knapsack_choice():
     util, choices, _, _ = choice_model.sample(prices, prices.reshape(1, -1), budgets, len(budgets))
 
     used_budgets = choices @ prices.reshape(-1, 1)
-    assert (used_budgets <= budgets).all(), "bundle exceeds budget"
+    assert (used_budgets <= budgets).all(), "bundle price exceeds budget"

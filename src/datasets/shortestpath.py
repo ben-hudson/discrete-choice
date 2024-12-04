@@ -1,13 +1,12 @@
 import networkx as nx
 import numpy as np
 
-from scipy.optimize import linprog
 from typing import Any, Callable
 
-from .knapsack import LinAddConstrBundleChoice
+from .knapsack import ConstrBundleChoice
 
 
-class PathChoice(LinAddConstrBundleChoice):
+class PathChoice(ConstrBundleChoice):
     def __init__(self, graph: nx.Graph, util_fn: Callable, seed: int = None):
         if not graph.is_directed():
             print("converting to directed graph")
@@ -20,15 +19,12 @@ class PathChoice(LinAddConstrBundleChoice):
         super().__init__(len(self.graph.edges), util_fn, seed)
 
     def sample(self, feats: np.ndarray, n_samples: int = 1, fixed_orig: Any = None, fixed_dest: Any = None):
-
         ods = self._sample_ods(n_samples, fixed_orig, fixed_dest)
         constr_mat, constr_levels = self._ods_to_constrs(ods)
-        util, choices, choice_util, _ = super().sample(feats, constr_mat, constr_levels, n_samples, eq_constr=True)
-        other = {
-            "constr_mat": constr_mat,
-            "constr_levels": constr_levels,
-            "ods": ods,
-        }
+        util, choices, choice_util, other = super().sample(feats, constr_mat, constr_levels, n_samples, eq_constr=True)
+        other["constr_mat"] = constr_mat
+        other["constr_levels"] = constr_levels
+        other["ods"] = ods
         return util, choices, choice_util, other
 
     def _sample_ods(self, n_samples: int = 1, fixed_orig: Any = None, fixed_dest: Any = None):

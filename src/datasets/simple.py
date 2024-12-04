@@ -19,7 +19,7 @@ class DiscreteChoice:
             util.shape[1] == self.n_alternatives
         ), f"expected util to be a {n_samples}x{self.n_alternatives} tensor, but got {util.shape[0]}x{util.shape[1]}"
 
-        choices = np.argmax(util, axis=1, keepdims=True)
-        choice_util = np.take_along_axis(util, choices, axis=1)
+        choice_util = util.max(axis=1, keepdims=True)
+        choices = (util == choice_util).astype(int)
         other = {}
-        return util, choices.squeeze(), choice_util.squeeze(), other
+        return util, choices, choice_util.squeeze(), other

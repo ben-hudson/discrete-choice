@@ -1,6 +1,8 @@
 import torch
+import numpy as np
 
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from matplotlib.figure import Figure
 from os import devnull
 
 
@@ -22,3 +24,13 @@ def norm(batch: torch.Tensor) -> torch.Tensor:
 
 def is_integer(batch) -> bool:
     return ((batch == 0) | (batch == 1)).all()
+
+
+def fig_to_rgb_tensor(fig: Figure):
+    fig.canvas.draw()
+    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    w, h = fig.canvas.get_width_height()
+    img_np = data.reshape((int(h), int(w), -1)).copy()
+    # matplotlib puts channels last, pytorch puts channels first
+    img_pt = torch.FloatTensor(img_np).permute(2, 0, 1)
+    return img_pt

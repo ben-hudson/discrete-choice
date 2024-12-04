@@ -3,7 +3,7 @@ import json
 import os
 import pathlib
 import torch
-import utils.wandb as wandb
+import wandb
 
 from ignite.exceptions import NotComputableError
 from ignite.metrics import Metric
