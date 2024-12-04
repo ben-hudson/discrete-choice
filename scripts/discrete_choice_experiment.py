@@ -1,5 +1,9 @@
+import argparse
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pathlib
 import seaborn as sns
 import torch
 import tqdm
@@ -16,7 +20,9 @@ from torch.distributions import Normal, MultivariateNormal, Gumbel, Uniform
 from torch.utils.data import DataLoader
 from torchvision.ops import MLP
 from utils.misc import fig_to_rgb_tensor
-from utils.wandb import record_metrics
+from utils.wandb import record_metrics, get_friendly_name
+
+matplotlib.use("agg")
 
 
 class Encoder(nn.Module):
@@ -24,7 +30,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.params_per_latent = 2
         self.mlp = MLP(
-            obs_dim + context_dim,
+            obs_dim + context_dim[0] * context_dim[1],
             hidden_dims + [latent_dim * self.params_per_latent],
             activation_layer=nn.LeakyReLU,
         )
@@ -40,19 +46,18 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, latent_dim, context_dim, hidden_dims, obs_dim):
         super().__init__()
+        self.beta = nn.Linear(context_dim[1], 1)
         self.mlp = MLP(
-            latent_dim + context_dim,
+            latent_dim,
             hidden_dims + [obs_dim],
             activation_layer=nn.LeakyReLU,
         )
 
     def forward(self, latents: torch.Tensor, context: torch.Tensor, norm: bool = False):
-        x = torch.cat([latents, context.flatten(1)], dim=-1)
-        logits = self.mlp(x)
-        if norm:
-            return nn.functional.softmax(logits)
-        else:
-            return logits
+        determ = self.beta(context.flatten(0, 1)).reshape(context.shape[:2])
+        random = self.mlp(latents)
+        util = determ + random
+        return util
 
 
 class OneHotCrossEntropy(nn.Module):
@@ -70,9 +75,42 @@ def train_step(model: nn.Module, obs: torch.Tensor, context: torch.Tensor, kld_w
 
 
 def val_step(model: nn.Module, obs: torch.Tensor, context: torch.Tensor):
-    logits = model.sample(context)
-    utils = logits.exp()
+    utils = model.sample(context)
     return utils
+
+
+def get_argparser():
+    parser = argparse.ArgumentParser(
+        "Experiment with unobserved inter- and intra-individual heterogeneity discrete choice problem"
+    )
+
+    dataset_args = parser.add_argument_group("dataset", description="Dataset arguments")
+    dataset_args.add_argument("--n_people", type=int, default=1000, help="Number of people")
+    dataset_args.add_argument("--n_obs_per_person", type=int, default=16, help="Number of observations per person")
+    dataset_args.add_argument(
+        "--corr_strength",
+        type=float,
+        default=0.3,
+        choices=[0.3, 0.6],
+        help="Strength of correlations between alternatives",
+    )
+
+    model_args = parser.add_argument_group("model", description="Model arguments")
+    model_args.add_argument("--latent_dim", type=int, default=1, help="Latent dimensions")
+
+    train_args = parser.add_argument_group("training", description="Training arguments")
+    train_args.add_argument("--batch_size", type=int, default=1024, help="Batch size")
+    train_args.add_argument("--n_epochs", type=int, default=500, help="Maximum number of training epochs")
+    train_args.add_argument("--lr", type=float, default=1e-2, help="Optimizer learning rate")
+    train_args.add_argument(
+        "--kld_weight", type=float, default=1e-2, help="Relative weight of KL divergence and reconstruction loss"
+    )
+
+    wandb_args = parser.add_argument_group("wandb", description="W&B arguments")
+    wandb_args.add_argument("--use_wandb", action="store_true", help="Upload metrics to W&B")
+    wandb_args.add_argument("--wandb_project", type=str, default=pathlib.Path(__file__).stem, help="W&B project")
+
+    return parser
 
 
 def plot_util_dist(util, util_pred):
@@ -95,7 +133,9 @@ def plot_util_dist(util, util_pred):
         aspect=1,
         grid_kws={"layout_pad": 0.0},
     )
-    return fig_to_rgb_tensor(plot.figure)
+    img = fig_to_rgb_tensor(plot.figure)
+    plt.close()
+    return img
 
 
 # utility function from https://arxiv.org/pdf/1905.00419
@@ -112,25 +152,28 @@ def util_fn(N, T, alpha, X, n_samples, seed):
 
     mus = MultivariateNormal(zeta, Sigma_B).sample((N,))
     betas = torch.cat([MultivariateNormal(mu, Sigma_W).sample((T,)) for mu in mus])
-    U = torch.bmm(betas.unsqueeze(1), X).squeeze()
+    U = torch.bmm(X, betas.unsqueeze(2)).squeeze()
     # U += Gumbel(0, 1).sample(U.shape)
     return U
 
 
 if __name__ == "__main__":
-    run = wandb.init(project="discrete_choice_experiment")
+    argparser = get_argparser()
+    args = argparser.parse_args()
+
+    if args.use_wandb:
+        run = wandb.init(project=args.wandb_project, config=args, name=get_friendly_name(args, argparser))
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     n_alternatives = 5
     n_feats = 4
-    n_individuals = 1000
-    n_timesteps = 16
-    corr_strength = 0.3
-    n_samples = n_individuals * n_timesteps
-    data_generator = DiscreteChoice(n_alternatives, partial(util_fn, n_individuals, n_timesteps, corr_strength))
+    n_samples = args.n_people * args.n_obs_per_person
+    data_generator = DiscreteChoice(
+        n_alternatives, partial(util_fn, args.n_people, args.n_obs_per_person, args.corr_strength)
+    )
 
-    feats = Uniform(0, 2).sample((n_samples, n_feats, n_alternatives))
+    feats = Uniform(0, 2).sample((n_samples, n_alternatives, n_feats))
     util, choices, choice_util, other = data_generator.sample(feats, n_samples)
 
     feats_normed = StandardScaler().fit_transform(feats.reshape(-1, 1)).reshape(feats.shape).astype(np.float32)
@@ -145,34 +188,29 @@ if __name__ == "__main__":
         feats_normed[n_train:], util[n_train:], choices[n_train:], choice_util[n_train:], labels=labels[n_train:]
     )
 
-    batch_size = 1000
-    train_bs, test_bs = min(batch_size, len(train_set)), n_test
+    train_bs, test_bs = min(args.batch_size, len(train_set)), min(args.batch_size, len(test_set))
     train_loader = DataLoader(train_set, batch_size=train_bs, shuffle=True, drop_last=True)
     test_loader = DataLoader(test_set, batch_size=test_bs, shuffle=False, drop_last=True)
 
-    latent_dim = 4
     obs_feats = n_feats
-    prior = Normal(torch.zeros(latent_dim, device=device), torch.ones(latent_dim, device=device))
-    encoder = Encoder(n_alternatives, obs_feats * n_alternatives, [512, 256, 128, 64], latent_dim)
-    decoder = Decoder(latent_dim, obs_feats * n_alternatives, [64, 128, 256, 512], n_alternatives)
+    prior = Normal(torch.zeros(args.latent_dim, device=device), torch.ones(args.latent_dim, device=device))
+    encoder = Encoder(n_alternatives, (n_alternatives, obs_feats), [512, 512, 512], args.latent_dim)
+    decoder = Decoder(args.latent_dim, (n_alternatives, obs_feats), [512], n_alternatives)
     model = CVAE(prior, decoder, encoder, OneHotCrossEntropy())
     model.to(device)
 
-    lr = 1e-3
-    kld_weight = 0.01
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     metrics = defaultdict(Average)
 
-    n_epochs = 100
-    for epoch in tqdm.trange(n_epochs):
+    for epoch in tqdm.trange(args.n_epochs):
         for batch in train_loader:
             model.train()
             optimizer.zero_grad()
 
             obs = batch.choices.to(device)
             context = batch.feats.to(device)
-            loss, train_metrics = train_step(model, obs, context, kld_weight)
+            loss, train_metrics = train_step(model, obs, context, args.kld_weight)
 
             loss.backward()
             optimizer.step()
@@ -194,6 +232,8 @@ if __name__ == "__main__":
             utils_pred = torch.cat(utils_pred, dim=-1)
 
             img = plot_util_dist(utils.numpy(), util_pred.numpy())
-            wandb.log({"util": wandb.Image(img)}, step=epoch)
+            if args.use_wandb:
+                wandb.log({"util": wandb.Image(img)}, step=epoch)
 
-        record_metrics(metrics, epoch)
+        if args.use_wandb:
+            record_metrics(metrics, epoch)
