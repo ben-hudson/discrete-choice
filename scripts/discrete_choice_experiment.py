@@ -67,7 +67,7 @@ class OneHotCrossEntropy(nn.Module):
 
 
 def train_step(model: nn.Module, obs: torch.Tensor, context: torch.Tensor, kld_weight: float):
-    kld, reconstruction_loss = model(obs, context)
+    kld, reconstruction_loss = model(obs, context, n_samples=10)
     # maximize elbo = minimize -elbo = minimize kld - log likelihood = minimize kld + nll
     loss = kld_weight * kld + (1 - kld_weight) * reconstruction_loss
     metrics = {"kld": kld.detach(), "reconstruction_loss": reconstruction_loss.detach(), "loss": loss.detach()}
@@ -97,6 +97,20 @@ def get_argparser():
 
     model_args = parser.add_argument_group("model", description="Model arguments")
     model_args.add_argument("--latent_dim", type=int, default=1, help="Latent dimensions")
+    model_args.add_argument(
+        "--encoder_hidden_dim",
+        type=int,
+        nargs="*",
+        default=[512, 256, 128, 64],
+        help="Hidden dimensions in encoder MLP",
+    )
+    model_args.add_argument(
+        "--decoder_hidden_dim",
+        type=int,
+        nargs="*",
+        default=[64, 128, 256, 512],
+        help="Hidden dimensions in decoder MLP",
+    )
 
     train_args = parser.add_argument_group("training", description="Training arguments")
     train_args.add_argument("--batch_size", type=int, default=1024, help="Batch size")
@@ -133,9 +147,7 @@ def plot_util_dist(util, util_pred):
         aspect=1,
         grid_kws={"layout_pad": 0.0},
     )
-    img = fig_to_rgb_tensor(plot.figure)
-    plt.close()
-    return img
+    return plot.figure
 
 
 # utility function from https://arxiv.org/pdf/1905.00419
@@ -194,8 +206,8 @@ if __name__ == "__main__":
 
     obs_feats = n_feats
     prior = Normal(torch.zeros(args.latent_dim, device=device), torch.ones(args.latent_dim, device=device))
-    encoder = Encoder(n_alternatives, (n_alternatives, obs_feats), [512, 512, 512], args.latent_dim)
-    decoder = Decoder(args.latent_dim, (n_alternatives, obs_feats), [512], n_alternatives)
+    encoder = Encoder(n_alternatives, (n_alternatives, obs_feats), args.encoder_hidden_dim, args.latent_dim)
+    decoder = Decoder(args.latent_dim, (n_alternatives, obs_feats), args.decoder_hidden_dim, n_alternatives)
     model = CVAE(prior, decoder, encoder, OneHotCrossEntropy())
     model.to(device)
 
@@ -228,12 +240,16 @@ if __name__ == "__main__":
                 utils.append(batch.util)
                 utils_pred.append(util_pred.cpu())
 
-            utils = torch.cat(utils, dim=-1)
-            utils_pred = torch.cat(utils_pred, dim=-1)
+            utils = torch.cat(utils, dim=0)
+            utils_pred = torch.cat(utils_pred, dim=0)
 
-            img = plot_util_dist(utils.numpy(), util_pred.numpy())
+            figure = plot_util_dist(utils.numpy(), utils_pred.numpy())
             if args.use_wandb:
+                img = fig_to_rgb_tensor(figure)
                 wandb.log({"util": wandb.Image(img)}, step=epoch)
+            else:
+                figure.savefig(f"util_epoch={epoch}.png")
+            plt.close()
 
         if args.use_wandb:
             record_metrics(metrics, epoch)
