@@ -127,7 +127,7 @@ def get_argparser():
     return parser
 
 
-def plot_util_dist(util, util_pred):
+def plot_util_dist(util, util_pred, n_bins=10):
     util_normed = StandardScaler().fit_transform(util.reshape(-1, 1)).reshape(util.shape)
     util_df = pd.DataFrame(util_normed)
     util_df["type"] = "true"
@@ -137,12 +137,16 @@ def plot_util_dist(util, util_pred):
     util_pred_df["type"] = "pred"
 
     df = pd.concat((util_df, util_pred_df))
+
+    all_utils = np.vstack((util_normed, util_pred_normed))
+    _, bins = np.histogram(all_utils, bins=n_bins)
+
     plot = sns.pairplot(
         df,
         hue="type",
         kind="hist",
-        plot_kws={"bins": 10, "alpha": 0.8},
-        diag_kws={"bins": 10},
+        plot_kws={"bins": [bins, bins], "alpha": 0.8},
+        diag_kws={"bins": bins},
         height=1,
         aspect=1,
         grid_kws={"layout_pad": 0.0},
