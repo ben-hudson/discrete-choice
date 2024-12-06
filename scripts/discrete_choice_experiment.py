@@ -164,8 +164,8 @@ def util_fn(N, T, alpha, X, n_samples, seed):
 
     mus = MultivariateNormal(zeta, Sigma_B).sample((N,))
     betas = torch.cat([MultivariateNormal(mu, Sigma_W).sample((T,)) for mu in mus])
-    U = torch.bmm(X, betas.unsqueeze(2)).squeeze()
-    # U += Gumbel(0, 1).sample(U.shape)
+    U = betas @ X.T
+    U += Gumbel(0, 1).sample(U.shape)
     return U
 
 
@@ -185,19 +185,28 @@ if __name__ == "__main__":
         n_alternatives, partial(util_fn, args.n_people, args.n_obs_per_person, args.corr_strength)
     )
 
-    feats = Uniform(0, 2).sample((n_samples, n_alternatives, n_feats))
+    feats = Uniform(0, 2).sample((n_alternatives, n_feats))
     util, choices, choice_util, other = data_generator.sample(feats, n_samples)
 
-    feats_normed = StandardScaler().fit_transform(feats.reshape(-1, 1)).reshape(feats.shape).astype(np.float32)
+    feats_normed = StandardScaler().fit_transform(feats).astype(np.float32)
+    feats_normed_batched = np.broadcast_to(feats_normed, (n_samples, *feats_normed.shape)).copy()
     labels = np.argmax(choices, axis=1)
 
     n_test = int(0.2 * n_samples)
     n_train = n_samples - n_test
     train_set = ChoiceDataset(
-        feats_normed[:n_train], util[:n_train], choices[:n_train], choice_util[:n_train], labels=labels[:n_train]
+        feats_normed_batched[:n_train],
+        util[:n_train],
+        choices[:n_train],
+        choice_util[:n_train],
+        labels=labels[:n_train],
     )
     test_set = ChoiceDataset(
-        feats_normed[n_train:], util[n_train:], choices[n_train:], choice_util[n_train:], labels=labels[n_train:]
+        feats_normed_batched[n_train:],
+        util[n_train:],
+        choices[n_train:],
+        choice_util[n_train:],
+        labels=labels[n_train:],
     )
 
     train_bs, test_bs = min(args.batch_size, len(train_set)), min(args.batch_size, len(test_set))
