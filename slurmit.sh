@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=4G
-#SBATCH --time=02:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output /network/scratch/b/ben.hudson/slurm/%j.out
 #SBATCH --error /network/scratch/b/ben.hudson/slurm/%j.err
 
@@ -25,4 +25,4 @@ args=${@:2}
 
 # is this safe? no!
 # does it matter? no!
-python "${script}" --use_wandb ${args}
+python "${script}" --use_wandb --n_workers 8 ${args}

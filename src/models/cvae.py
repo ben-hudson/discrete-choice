@@ -15,9 +15,11 @@ class CVAE(VAE):
         kld = D.kl_divergence(posterior, self.prior).mean()
 
         latent_sample = posterior.rsample((n_samples,))
-        obs_hat = self.generation_model(latent_sample, context)
-        losses = torch.stack([self.reconstruction_loss(obs_hat[i], obs, reduction="none") for i in range(n_samples)])
-        loss = losses.mean()
+        losses = []
+        for i in range(n_samples):
+            obs_hat = self.generation_model(latent_sample[i], context)
+            losses.append(self.reconstruction_loss(obs_hat, obs, reduction="none"))
+        loss = torch.stack(losses).mean()
 
         return kld, loss
 

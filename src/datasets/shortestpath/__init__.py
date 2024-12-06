@@ -3,7 +3,7 @@ import numpy as np
 
 from typing import Any, Callable
 
-from .knapsack import ConstrBundleChoice
+from ..knapsack import ConstrBundleChoice
 
 
 class PathChoice(ConstrBundleChoice):
