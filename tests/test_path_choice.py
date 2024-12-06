@@ -1,36 +1,10 @@
 import networkx as nx
 import numpy as np
-import pytest
 
 from datasets.shortestpath import PathChoice
 
 
-@pytest.fixture
-def random_graph():
-    G = nx.fast_gnp_random_graph(100, 0.1, directed=True)
-    node_pos = nx.spring_layout(G)
-    for i, j in G.edges:
-        G.edges[i, j]["cost"] = np.linalg.norm(node_pos[j] - node_pos[i])
-    return G
-
-
-@pytest.fixture
-def multigraph():
-    G = nx.MultiDiGraph()
-    G.add_edge(0, 1, cost=1.0, sp=True)
-    G.add_edge(0, 1, cost=2.0, sp=False)
-    G.add_edge(1, 2, cost=1.0, sp=True)
-    G.add_edge(1, 2, cost=2.0, sp=False)
-    return G
-
-
-def path_to_sol(path, edges):
-    path_edges = list(zip(path[:-1], path[1:]))
-    sol = [1 if e in path_edges else 0 for e in edges]
-    return np.array(sol)
-
-
-def test_ilp_sp(random_graph: nx.DiGraph):
+def test_ilp_sp(random_graph: nx.DiGraph, path_to_sol):
     def util(costs, n_samples, seed):
         return np.broadcast_to(-costs, (n_samples, *costs.shape))
 
@@ -46,6 +20,7 @@ def test_ilp_sp(random_graph: nx.DiGraph):
     for sol, obj, (o, d) in zip(sols, objs, ods):
         true_obj, true_path = nx.single_source_dijkstra(random_graph, o, d, weight="cost")
         true_sol = path_to_sol(true_path, random_graph.edges)
+        true_sol = np.array(true_sol)
         assert np.isclose(-obj, true_obj), "model and true objective values differ"
         assert (sol == true_sol).all(), "model and true paths differ"
 
